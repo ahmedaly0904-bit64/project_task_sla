@@ -94,6 +94,15 @@ cron method directly.
 - In-app only. The escalation is an Odoo activity, with no email or chat message.
 - The 24 hour window is fixed. It cannot be configured per project or per stage.
 
+## Translations
+
+`i18n/project_task_sla.pot` holds the extracted terms and `i18n/ar.po` an Arabic
+translation, covering the field labels, the help text, the scheduled action, and
+both strings the escalation activity shows the user.
+
+To add another language, copy the `.pot` file to `i18n/<code>.po` and fill in the
+`msgstr` lines. Odoo picks the file up on the next module upgrade.
+
 ## Requirements
 
 Odoo 17.0. Depends on `project`.
