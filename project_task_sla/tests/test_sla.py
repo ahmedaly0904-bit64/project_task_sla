@@ -7,7 +7,8 @@ from odoo.tests.common import TransactionCase
 
 @tagged('post_install', '-at_install')
 class TestTaskSla(TransactionCase):
-    """كل test هنا بيجاوب على سؤال واحد: امتى النظام بيصعّد، وامتى المفروض يسكت."""
+    """Each test answers one question: when does the module escalate, and when
+    does it have to stay quiet?"""
 
     @classmethod
     def setUpClass(cls):
@@ -31,10 +32,14 @@ class TestTaskSla(TransactionCase):
             'type_ids': [(6, 0, [cls.stage_open.id, cls.stage_review.id, cls.stage_done.id])],
         })
 
-    # ------------------------------------------------------------------ أدوات
+    # ---------------------------------------------------------------- helpers
 
     def _make_task(self, project=None, stage=None, hours_ago=0):
-        """تاسك بتدخل مرحلتها من `hours_ago` ساعة. تزوير الوقت بدل الاستنى."""
+        """A task that entered its stage `hours_ago` hours ago.
+
+        The deadline is stored data rather than an event, so backdating the
+        entry date is enough to make a task overdue without waiting.
+        """
         task = self.env['project.task'].create({
             'name': 'SLA task',
             'project_id': (project or self.project).id,
@@ -45,7 +50,7 @@ class TestTaskSla(TransactionCase):
         return task
 
     def _activities(self, task):
-        """بنقرا من mail.activity مباشرة عشان مانتعلقش بالـ cache."""
+        """Read mail.activity directly so the ORM cache cannot hide a result."""
         return self.env['mail.activity'].search([
             ('res_model', '=', 'project.task'),
             ('res_id', '=', task.id),
@@ -54,28 +59,28 @@ class TestTaskSla(TransactionCase):
     def _run_cron(self):
         self.env['project.task']._cron_check_sla_overdue()
 
-    # ------------------------------------------------------- ١ · الحساب نفسه
+    # ------------------------------------------------------- the computation
 
     def test_deadline_is_24h_after_stage_entry(self):
         task = self._make_task()
         self.assertEqual(
             task.sla_deadline,
             task.stage_entered_date + timedelta(hours=24),
-            "الـ deadline لازم يتحسب لوحده من stage_entered_date + 24h",
+            "the deadline should follow stage_entered_date without being written",
         )
 
-    # ------------------------------------------------ ٢ · المسار السعيد
+    # ---------------------------------------------------------- the happy path
 
     def test_overdue_task_is_escalated_once(self):
         task = self._make_task(hours_ago=25)
         self._run_cron()
 
         activities = self._activities(task)
-        self.assertEqual(len(activities), 1, "تاسك متأخرة لازم تتصعّد مرة واحدة")
-        self.assertEqual(activities.user_id, self.lead, "التصعيد لازم يروح للـ Operations Lead")
-        self.assertTrue(task.sla_notified, "لازم تتعلّم إنها اتصعّدت")
+        self.assertEqual(len(activities), 1, "an overdue task should escalate once")
+        self.assertEqual(activities.user_id, self.lead, "the escalation should reach the Operations Lead")
+        self.assertTrue(task.sla_notified, "the task should record that it was escalated")
 
-    # --------------------------------------- ٣ · النقل بيصفّر التلاتة
+    # ----------------------------------------------- a new stage starts fresh
 
     def test_stage_move_resets_the_sla(self):
         task = self._make_task(hours_ago=25)
@@ -85,15 +90,15 @@ class TestTaskSla(TransactionCase):
 
         task.write({'stage_id': self.stage_review.id})
 
-        self.assertGreater(task.stage_entered_date, entered_before, "التاريخ اتكتب من جديد")
+        self.assertGreater(task.stage_entered_date, entered_before, "the entry date is rewritten")
         self.assertEqual(
             task.sla_deadline,
             task.stage_entered_date + timedelta(hours=24),
-            "الـ deadline اتحسب تاني — ده اللي بيثبت إن @api.depends شغالة",
+            "the deadline is recomputed, which is what proves @api.depends fires",
         )
-        self.assertFalse(task.sla_notified, "المرحلة الجديدة بتبدأ صفحة بيضا")
+        self.assertFalse(task.sla_notified, "the new stage starts from zero")
 
-    # ------------------------------ ٤ · الكرون مرتين = تصعيد واحد
+    # ------------------------------------------- running the job twice is safe
 
     def test_cron_does_not_escalate_twice(self):
         task = self._make_task(hours_ago=25)
@@ -102,10 +107,10 @@ class TestTaskSla(TransactionCase):
 
         self.assertEqual(
             len(self._activities(task)), 1,
-            "sla_notified هو اللي بيمنع التكرار — لو اتشال هيبقى تصعيد كل يوم",
+            "sla_notified is the guard; without it this becomes a daily escalation",
         )
 
-    # ------------------------------- ٥ · المشاريع المعفاة (الـ templates)
+    # ------------------------------------------------ templates stay quiet
 
     def test_exempt_project_is_never_escalated(self):
         template = self.env['project.project'].create({
@@ -118,18 +123,18 @@ class TestTaskSla(TransactionCase):
 
         self.assertFalse(
             self._activities(task),
-            "محدش بيشتغل على template — تصعيدها بيدفن التأخير الحقيقي في ضوضاء",
+            "nobody works a template, so escalating one buries the real overdue work",
         )
 
-    # ------------------------------------ ٦ · المراحل المقفولة
+    # -------------------------------------------- closed tasks stay quiet
 
     def test_folded_stage_is_never_escalated(self):
         task = self._make_task(stage=self.stage_done, hours_ago=25)
         self._run_cron()
 
-        self.assertFalse(self._activities(task), "التاسك خلصت — مفيش حاجة تتصعّد")
+        self.assertFalse(self._activities(task), "the task is finished, so there is nothing to escalate")
 
-    # --------------------------- ٧ · الإعداد ناقص: يسكت من غير ما ينفجر
+    # ------------------------------- missing configuration fails quietly
 
     def test_missing_parameter_escalates_nothing(self):
         self.env['ir.config_parameter'].sudo().set_param(

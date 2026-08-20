@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from datetime import timedelta
 
 
@@ -65,8 +65,9 @@ class ProjectTask(models.Model):
         for task in overdue_tasks:
             task.activity_schedule(
                 'mail.mail_activity_data_todo',
-                summary='SLA Overdue: %s' % task.name,
-                note='المهمة تجاوزت الـ SLA deadline (24h) في مرحلتها الحالية.',
+                summary=_('SLA overdue: %s', task.name),
+                note=_('This task has passed its 24 hour SLA deadline in '
+                       'its current stage.'),
                 user_id=operations_lead_id,
             )
             task.sla_notified = True
