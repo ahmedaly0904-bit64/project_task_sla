@@ -98,6 +98,37 @@ class TestTaskSla(TransactionCase):
         )
         self.assertFalse(task.sla_notified, "the new stage starts from zero")
 
+    # ------------------------------------- before the deadline, stay quiet
+
+    def test_task_before_its_deadline_is_not_escalated(self):
+        task = self._make_task(hours_ago=23)
+        self._run_cron()
+
+        self.assertFalse(
+            self._activities(task),
+            "the deadline has not passed, so the whole point is to say nothing",
+        )
+        self.assertFalse(task.sla_notified)
+
+    # --------------------------- saving without changing stage keeps the clock
+
+    def test_writing_the_same_stage_does_not_reset_the_sla(self):
+        task = self._make_task(hours_ago=25)
+        self._run_cron()
+        self.assertTrue(task.sla_notified)
+        entered_before = task.stage_entered_date
+
+        task.write({'stage_id': self.stage_open.id})
+
+        self.assertEqual(
+            task.stage_entered_date, entered_before,
+            "the stage did not change, so the clock should not restart",
+        )
+        self.assertTrue(
+            task.sla_notified,
+            "otherwise pressing Save would buy another 24 hours and hide the breach",
+        )
+
     # ------------------------------------------- running the job twice is safe
 
     def test_cron_does_not_escalate_twice(self):

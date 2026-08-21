@@ -68,19 +68,27 @@ odoo-bin -c <your.conf> -u project_task_sla \
          --test-enable --test-tags /project_task_sla --stop-after-init
 ```
 
-Seven cases live in `project_task_sla/tests/test_sla.py`. Three cover the
-computation, the escalation and the stage reset. The other four cover the cases
-where the module has to stay quiet, one per condition in the table above.
+Nine cases live in `project_task_sla/tests/test_sla.py`. Four cover the
+computation, the escalation, the stage reset, and the rule that saving a task
+without changing its stage must not restart the clock. The other five cover the
+cases where the module has to stay quiet: one for each condition in the table
+above, plus the missing configuration guard.
 
 | Test | Covers |
 |---|---|
 | `test_deadline_is_24h_after_stage_entry` | The computed field |
 | `test_overdue_task_is_escalated_once` | The escalation reaches the right user |
 | `test_stage_move_resets_the_sla` | All three fields reset, and the `@api.depends` chain fires |
+| `test_writing_the_same_stage_does_not_reset_the_sla` | Pressing Save cannot buy a task another 24 hours |
+| `test_task_before_its_deadline_is_not_escalated` | Nothing happens while the deadline is still ahead |
 | `test_cron_does_not_escalate_twice` | The idempotency guard |
 | `test_exempt_project_is_never_escalated` | Templates stay quiet |
 | `test_folded_stage_is_never_escalated` | Closed tasks stay quiet |
 | `test_missing_parameter_escalates_nothing` | Missing configuration fails quietly rather than loudly |
+
+The coverage was checked by breaking the module on purpose. Removing any one of
+the four conditions above, or the guard in `write()` that checks the stage really
+changed, turns a test red.
 
 None of them wait for real time to pass. The deadline is stored data rather than
 an event, so each test writes `stage_entered_date` into the past and calls the
