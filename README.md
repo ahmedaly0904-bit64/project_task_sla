@@ -1,11 +1,10 @@
 # Task SLA Escalation
 
-An Odoo 17 module that enforces one rule from an internal operations playbook:
+An Odoo 17 module that puts a deadline on how long a task may sit in one stage.
 
-> Any handoff between two departments must get a response within 24 hours,
-> or it escalates to the Operations Lead.
-
-Without it the rule lives in a document and depends on people remembering it.
+If a task stays in its stage for more than 24 hours, a scheduled action escalates
+it to a designated user. Without something like this, a response time target
+lives in a document and depends on people remembering it.
 
 ## What it adds
 
@@ -36,12 +35,12 @@ System Parameter:  project_task_sla.operations_lead_user_id = <res.users id>
 If it is unset, the scheduled action returns without doing anything.
 
 > [!WARNING]
-> Point this at an active user. During development it was set to a deactivated
-> account for a while, and the documentation claimed it was empty. Escalations
-> were being created and delivered to nobody, and nothing anywhere reported a
-> problem. "Does nothing" and "does the wrong thing somewhere nobody is looking"
-> are not the same failure, and only one of them is visible.
-> `test_missing_parameter_escalates_nothing` exists because of that.
+> Point this at an active user. If the parameter holds the id of a deactivated
+> account, escalations are still created and delivered to nobody, and nothing
+> reports a problem. "Does nothing" and "does the wrong thing somewhere nobody
+> is looking" are not the same failure, and only one of them is visible.
+> `test_missing_parameter_escalates_nothing` covers the empty case for the same
+> reason.
 
 ## How escalation works
 
@@ -96,6 +95,9 @@ cron method directly.
 
 ## Known limitations
 
+- Escalation goes to a single configured user rather than to each task's own
+  owner. That is enough while one person chases everything, and it is the first
+  thing to change when that stops being true.
 - Calendar hours, not working hours. A task entering a stage at 16:00 on Thursday
   gets a Friday deadline whether or not Friday is a working day. Reading the
   deadline off `resource.calendar` would fix this.
